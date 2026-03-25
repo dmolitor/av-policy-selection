@@ -1,10 +1,19 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## Essential Project Background
 
-## Project Overview
+`av-policy-selection` is a Python research project implementing anytime-valid statistical methods for optimal policy identification and off-policy inference in contextual bandits.
 
-`av-policy-selection` is a Python research project implementing anytime-valid statistical methods for optimal policy identification and off-policy inference in contextual bandits. The theoretical foundation is in `resources/` — two LaTeX papers covering doubly robust pseudo-outcomes, confidence sequences (CS), and stopping time analysis.
+There are two documents that are the critical source of truth on which all code will be based:
+- `resources/anytime-valid-off-policy-inference-for-contextual-bandits.tex` is the paper that
+introduces the primary methodological tools. All definitions and essential background are contained
+in this paper.
+- `resources/anytime-valid-optimal-policy-identification.tex` is our proposed extension built on
+top of the initial paper.
+
+All the code implemented in this project should be linked directly to these papers
+and corresponding references to the papers should be included in the documentation
+when helpful.
 
 ## Package Manager
 
@@ -23,17 +32,21 @@ uv run python -c "import av_policy_selection"   # Verify package is importable
 uv run pytest                                    # Run tests (once test suite exists)
 uv run pytest tests/test_foo.py::test_bar       # Run a single test
 uv run ruff check src/                          # Lint (if ruff is added)
-uv run mypy src/                                # Type check (if mypy is added)
 ```
 
-## Code Architecture
+## Code Architecture and Instructions
 
-The package lives in `src/av_policy_selection/`. It is currently in early development with only a stub `hello()` function — the real implementation will follow the mathematical framework in `resources/`.
+The package lives in `src/av_policy_selection/`.
 
-**Key concepts from the research papers (relevant when implementing):**
-- **Doubly robust pseudo-outcomes**: Core estimator construction for off-policy evaluation
-- **Confidence sequences (CS)**: Anytime-valid, time-uniform confidence bounds (not fixed-sample CIs)
-- **Optimal policy set**: The set of policies whose value is within `ε` of the best policy
-- **Stopping times**: Sequential decision rules for when to terminate policy selection
+IMPORTANT: All code we add should have corresponding unit tests developed. These unit tests
+should meet one of two standards: (1) if the code does a non-deterministic process (i.e. we can't
+just confirm that it's output matches a given quantity) the unit tests should confirm that
+it's behavior matches expected behavior; (2) if the code is deterministic, the unit tests 
+should confirm that it matches expected behavior AND that the output is as expected.
 
-Python 3.14 is required (see `.python-version`).
+After adding new code, you MUST ALWAYS run all unit tests and fix any resulting errors before
+proceeding.
+
+## Git instructions
+
+Never use git unless explicitly instructed/asked by me.

@@ -7,8 +7,26 @@ authors = [
     { name = "Daniel Molitor", email = "molitdj97@gmail.com" }
 ]
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "joblib>=1.5.3",
+    "numba>=0.64.0",
+    "numpy>=2.4.3",
+    "plotnine>=0.15.3",
+    "scikit-learn>=1.8.0",
+    "scipy>=1.17.1",
+    "tqdm>=4.67.3",
+]
 
 [build-system]
 requires = ["uv_build>=0.9.22,<0.10.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
