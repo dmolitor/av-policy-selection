@@ -1,7 +1,7 @@
 [project]
 name = "av-policy-selection"
 version = "0.1.0"
-description = "Add your description here"
+description = "Replication code for 'Anytime-valid Optimal Policy Identification'."
 readme = "README.md"
 authors = [
     { name = "Daniel Molitor", email = "molitdj97@gmail.com" }
@@ -9,8 +9,10 @@ authors = [
 requires-python = ">=3.14"
 dependencies = [
     "joblib>=1.5.3",
+    "mizani>=0.14.4",
     "numba>=0.64.0",
     "numpy>=2.4.3",
+    "pandas>=2.2",
     "plotnine>=0.15.3",
     "scikit-learn>=1.8.0",
     "scipy>=1.17.1",

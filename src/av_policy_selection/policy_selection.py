@@ -16,10 +16,6 @@ class PolicySelector:
     Given pre-computed (m, T) lower and upper confidence-sequence bound arrays
     (with the α/m union-bound correction already applied during CS construction),
     computes the optimal policy set S_t and the stopping time τ.
-
-    References
-    ----------
-    resources/anytime-valid-optimal-policy-identification.tex
     """
 
     @staticmethod

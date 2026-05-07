@@ -49,4 +49,6 @@ proceeding.
 
 ## Git instructions
 
-Never use git unless explicitly instructed/asked by me.
+Never use git unless explicitly instructed/asked by me. When instructed,
+all changes should be made to the `dev` branch unless I explicity tell you
+another branch.

@@ -9,3 +9,10 @@ wheels/
 # Virtual environments
 .venv
 .DS_Store
+.claude/
+CLAUDE.md
+
+data/*
+!data/
+replication-package.zip
+resources/

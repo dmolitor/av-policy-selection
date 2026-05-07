@@ -1,20 +1,29 @@
-from .confidence_sequences import BettingConfidenceSequence, HoeffdingConfidenceBound, LILConfidenceSequence
+"""Public API for the anytime-valid optimal-policy-identification package.
+
+Only the symbols used in `simulations.py` and the infodemic re-analysis
+(`reanalysis.py`) are exported.
+"""
+
+from .confidence_sequences import (
+    BettingConfidenceSequence,
+    LILConfidenceSequence,
+    PrPLConfidenceInterval,
+    PrPLConfidenceSequence,
+)
 from .policy_selection import PolicySelector
-from .pseudo_outcomes import dr_pseudo_outcomes, importance_weights, iw_pseudo_outcomes
-from .reward_predictors import OLSRewardPredictor, RewardPredictor, SklearnRewardPredictor
-from .simulation import BanditData, BanditSimulator
+from .reward_predictors import (
+    OLSRewardPredictor,
+    RewardPredictor,
+    SklearnRewardPredictor,
+)
 
 __all__ = [
-    "BanditSimulator",
-    "BanditData",
-    "importance_weights",
-    "iw_pseudo_outcomes",
-    "dr_pseudo_outcomes",
-    "LILConfidenceSequence",
     "BettingConfidenceSequence",
-    "HoeffdingConfidenceBound",
+    "LILConfidenceSequence",
+    "PrPLConfidenceInterval",
+    "PrPLConfidenceSequence",
+    "PolicySelector",
+    "OLSRewardPredictor",
     "RewardPredictor",
     "SklearnRewardPredictor",
-    "OLSRewardPredictor",
-    "PolicySelector",
 ]

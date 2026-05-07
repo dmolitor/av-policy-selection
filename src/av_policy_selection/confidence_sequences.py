@@ -1,14 +1,11 @@
 """
 Anytime-valid confidence sequences for off-policy inference.
 
-Implements:
+Implements from Waudby-Smith et al.:
   - LILConfidenceSequence: Proposition lil-eb (Proposition 3) — variance-adaptive
     LIL confidence sequence for time-varying policy value ν̄_t.
   - BettingConfidenceSequence: Theorem dr-fixed-policy-value (Theorem 1) —
     doubly-robust betting confidence sequence for fixed policy value ν.
-
-Reference: Luedtke & Soni (2024), "Anytime-Valid Off-Policy Inference for
-Contextual Bandits"
 """
 
 import numpy as np
@@ -68,7 +65,7 @@ def _scaled_xi_and_variance(
 class LILConfidenceSequence:
     """Variance-adaptive LIL confidence sequence for time-varying policy value.
 
-    Implements Proposition lil-eb (Proposition 3) from Luedtke & Soni (2024).
+    Implements Proposition lil-eb (Proposition 3) of Waudby-Smith et al.
 
     The lower bound at time t is:
       L_t^LIL = (k+1) * [mean(ξ_1..t) - sqrt(γ₁²·ℓ_t·V̄_t + γ₂²·ℓ_t²)/t
@@ -173,11 +170,203 @@ class LILConfidenceSequence:
         return self.lower(phi_drl), self.upper(phi_dru)
 
 
+class PrPLConfidenceSequence:
+    """Closed-form predictable plug-in confidence sequence for fixed ν.
+
+    Implements Proposition prpl-cs. The lower bound is:
+
+      L_t^PrPl = (Σλ_i·ξ_i / Σλ_i/(k+1)
+                  - (log(1/α) + Σ(ξ_i−ξ̂_{i-1})²·ψ_E(λ_i)) / Σλ_i/(k+1)) ∨ 0
+
+    where ψ_E(λ) = −log(1−λ) − λ, and the n-independent (CS) tuning is:
+
+      λ_t = sqrt(2·log(1/α) / (σ̂²_{t-1}·t·log(1+t))) ∧ c
+
+    Two means are used:
+      ξ̄_t (non-lagged) = min(mean(ξ_1..t), cap)  — for σ̂² only
+      ξ̂_{t-1} (predictable) = min(mean(ξ_1..t-1), cap)  — in the bound formula
+
+    The upper bound uses the mirroring trick: U_t^PrPl = 1 − lower(φ_DRU).
+    """
+
+    def __init__(
+        self,
+        alpha: float,
+        k: float = 0.0,
+        c: float = 0.5,
+        sigma0_sq: float = 0.25,
+        xi_0: float = 0.5,
+    ):
+        """
+        Parameters
+        ----------
+        alpha : float
+            Significance level.
+        k : float
+            Truncation parameter k ≥ 0.
+        c : float
+            Truncation scale for λ_t, c ∈ (0, 1).
+        sigma0_sq : float
+            Initial variance estimate σ̂²_0.
+        xi_0 : float
+            Initial predictable mean ξ̂_0 (prior guess for ξ mean).
+        """
+        self.alpha = alpha
+        self.k = k
+        self.c = c
+        self.sigma0_sq = sigma0_sq
+        self.xi_0 = xi_0
+
+    def _compute_bounds(
+        self, phi_drl: np.ndarray, n_fixed: int | None = None
+    ) -> np.ndarray:
+        """Core computation shared by CS and CI.
+
+        Parameters
+        ----------
+        phi_drl : np.ndarray, shape (T,)
+        n_fixed : int or None
+            If None: use CS tuning  λ_t ∝ 1/sqrt(t·log(1+t)·σ̂²_{t-1}).
+            If int:  use CI tuning  λ_t ∝ 1/sqrt(n·σ̂²_{t-1})  (n = n_fixed).
+
+        Returns
+        -------
+        np.ndarray, shape (T,)
+        """
+        phi = np.asarray(phi_drl, dtype=float)
+        T = len(phi)
+        cap = 1.0 / (1.0 + self.k)
+        xi = phi / (1.0 + self.k)
+
+        # ξ̄_t (non-lagged): for σ̂² computation only [eq:prplcs]
+        xi_bar = np.minimum(np.cumsum(xi) / np.arange(1, T + 1), cap)
+
+        # σ̂²_t = (σ₀² + Σ(ξ_i − ξ̄_i)²) / (t+1)  [eq:betting-strategy-prpl-sigmahat2]
+        sq_dev = np.cumsum((xi - xi_bar) ** 2)
+        sigma_sq = (self.sigma0_sq + sq_dev) / (np.arange(1, T + 1) + 1)
+
+        sigma_sq_lag = np.empty(T)
+        sigma_sq_lag[0] = self.sigma0_sq
+        sigma_sq_lag[1:] = sigma_sq[:-1]
+
+        # λ_t: CS uses t·log(1+t); CI uses fixed n [eq:prplcs, corollary:prpl-ci]
+        t_vals = np.arange(1, T + 1, dtype=float)
+        if n_fixed is None:
+            denom = sigma_sq_lag * t_vals * np.log(1.0 + t_vals)
+        else:
+            denom = sigma_sq_lag * float(n_fixed)
+        lam = np.minimum(np.sqrt(2.0 * np.log(1.0 / self.alpha) / denom), self.c)
+
+        # ξ̂_{t-1} (predictable lagged mean): used directly in the bound [eq:prplcs]
+        xi_hat_lag = np.empty(T)
+        xi_hat_lag[0] = self.xi_0
+        xi_hat_lag[1:] = xi_bar[:-1]
+
+        # ψ_E(λ) = −log(1−λ) − λ  [line 728, proof:prpl-cs]
+        psi_e = -np.log1p(-lam) - lam
+
+        # Cumulative sums for the closed-form bound
+        lam_xi = np.cumsum(lam * xi)
+        lam_over_k1 = np.cumsum(lam * cap)         # Σλ_i/(k+1) = cap·Σλ_i
+        var_penalty = np.cumsum((xi - xi_hat_lag) ** 2 * psi_e)
+
+        log_1_alpha = np.log(1.0 / self.alpha)
+        L_unclipped = (
+            lam_xi / lam_over_k1
+            - (log_1_alpha + var_penalty) / lam_over_k1
+        )
+        return np.maximum(L_unclipped, 0.0)
+
+    def lower(self, phi_drl: np.ndarray) -> np.ndarray:
+        """Lower CS L_t^PrPl for all t=1..T.
+
+        Parameters
+        ----------
+        phi_drl : np.ndarray, shape (T,)
+
+        Returns
+        -------
+        np.ndarray, shape (T,)
+        """
+        return self._compute_bounds(np.asarray(phi_drl, dtype=float), n_fixed=None)
+
+    def upper(self, phi_dru: np.ndarray) -> np.ndarray:
+        """Upper CS U_t^PrPl = 1 − lower(φ_DRU) for all t=1..T.
+
+        [remark:mirroring-trick]
+        """
+        return 1.0 - self.lower(np.asarray(phi_dru, dtype=float))
+
+    def bounds(
+        self, phi_drl: np.ndarray, phi_dru: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        return self.lower(phi_drl), self.upper(phi_dru)
+
+
+class PrPLConfidenceInterval:
+    """Fixed-n PrPl confidence interval for fixed ν.
+
+    Implements Corollary prpl-ci. Identical to
+    PrPLConfidenceSequence but uses n-tuned betting parameters:
+
+      dot_λ_{t,n} = sqrt(2·log(1/α) / (n·σ̂²_{t-1})) ∧ c
+
+    concentrating betting power at the planned horizon n. The valid (1−α) CI is:
+
+      dot_L_n^PrPl = max_{1≤t≤n} L_t^PrPl,   dot_U_n^PrPl = min_{1≤t≤n} U_t^PrPl
+
+    lower() / upper() return these scalars. lower_trajectory() / upper_trajectory()
+    return the full (n,) path, which is NOT anytime-valid and fails under peeking.
+    """
+
+    def __init__(
+        self,
+        alpha: float,
+        k: float = 0.0,
+        c: float = 0.5,
+        sigma0_sq: float = 0.25,
+        xi_0: float = 0.5,
+    ):
+        self.alpha = alpha
+        self.k = k
+        self.c = c
+        self.sigma0_sq = sigma0_sq
+        self.xi_0 = xi_0
+        self._cs = PrPLConfidenceSequence(alpha, k, c, sigma0_sq, xi_0)
+
+    def lower_trajectory(self, phi_drl: np.ndarray) -> np.ndarray:
+        """L_t^PrPl trajectory t=1..n with n-tuned λ (NOT anytime-valid).
+
+        Returns
+        -------
+        np.ndarray, shape (n,)
+        """
+        phi = np.asarray(phi_drl, dtype=float)
+        return self._cs._compute_bounds(phi, n_fixed=len(phi))
+
+    def upper_trajectory(self, phi_dru: np.ndarray) -> np.ndarray:
+        """U_t^PrPl = 1 − lower_trajectory(φ_DRU) (NOT anytime-valid)."""
+        return 1.0 - self.lower_trajectory(np.asarray(phi_dru, dtype=float))
+
+    def lower(self, phi_drl: np.ndarray) -> float:
+        """Valid (1−α) lower CI: dot_L_n = max_t L_t^PrPl.
+
+        [corollary:prpl-ci, eq:prpl-ci]
+        """
+        return float(np.max(self.lower_trajectory(phi_drl)))
+
+    def upper(self, phi_dru: np.ndarray) -> float:
+        """Valid (1−α) upper CI: dot_U_n = min_t U_t^PrPl."""
+        return float(np.min(self.upper_trajectory(phi_dru)))
+
+    def bounds(self, phi_drl: np.ndarray, phi_dru: np.ndarray) -> tuple[float, float]:
+        return self.lower(phi_drl), self.upper(phi_dru)
+
+
 class BettingConfidenceSequence:
     """Doubly-robust betting confidence sequence for fixed policy value.
 
-    Implements Theorem dr-fixed-policy-value (Theorem 1) from Luedtke & Soni
-    (2024).
+    Implements Theorem dr-fixed-policy-value (Theorem 1)
 
     The lower bound at time t:
       L_t^DR = inf{ν̂ ∈ [0,1] : ∏_{i=1}^t [1 + λ_i^L(ν̂)·(φ_i^DRL - ν̂)] < 1/α}
@@ -196,7 +385,7 @@ class BettingConfidenceSequence:
         c: float = 0.5,
         sigma0_sq: float = 0.25,
         xi_0: float = 0.5,
-        tol: float = 1e-6,
+        tol: float = 1e-3,
     ):
         """
         Parameters
@@ -212,7 +401,9 @@ class BettingConfidenceSequence:
         xi_0 : float
             Initial estimate ξ̂_0 (used for variance process initialization).
         tol : float
-            Tolerance for brentq root-finding.
+            Tolerance for brentq root-finding.  1e-3 is sufficient for
+            stopping-time detection (policy gaps >> 1e-3); use 1e-6 only
+            when high-precision bound values are needed (e.g. unit tests).
         """
         self.alpha = alpha
         self.k = k
@@ -325,8 +516,8 @@ class BettingConfidenceSequence:
             / (sigma_hat_sq_lag * i_vals * np.log(1.0 + i_vals))
         )
 
-    def lower(self, phi_drl: np.ndarray) -> np.ndarray:
-        """Compute lower confidence bound L_t^DR for all t.
+    def lower(self, phi_drl: np.ndarray, stride: int = 1) -> np.ndarray:
+        """Compute lower confidence bound L_t^DR for all t (or every stride-th t).
 
         L_t^DR = inf{ν̂ ∈ [0,1] : product_martingale(ν̂, φ[:t]) < 1/α}
 
@@ -342,20 +533,28 @@ class BettingConfidenceSequence:
         ----------
         phi_drl : np.ndarray, shape (T,)
             Lower DR pseudo-outcomes φ_DRL.
+        stride : int
+            Compute bounds only at t = stride, 2·stride, …, T.  All other
+            positions are left at 0.  stride=1 (default) computes every t.
+            Warm-start carries over correctly between stride points since
+            L_t is non-decreasing; the bound at each computed t is identical
+            to the full-stride computation.  Useful for visualisation when
+            only a coarse time grid is needed, giving a stride× speedup.
 
         Returns
         -------
         np.ndarray, shape (T,)
-            Lower bounds L_t^DR.
+            Lower bounds L_t^DR (0 at non-stride positions when stride > 1).
         """
         phi_drl = np.asarray(phi_drl, dtype=float)
         T = len(phi_drl)
         log_threshold = np.log(1.0 / self.alpha)
         base_lam = self._precompute_base_lambda(phi_drl)
-        bounds = np.zeros(T)
-        warm_lo = 0.0   # warm-start: L_t >= L_{t-1} in general
 
-        for t in range(1, T + 1):
+        bounds = np.zeros(T)
+        warm_lo = 0.0
+
+        for t in range(stride, T + 1, stride):
             def f(nu_hat: float, _t: int = t) -> float:
                 ml = self.c / (self.k + nu_hat) if (self.k + nu_hat) > 0 else np.inf
                 lm = np.minimum(base_lam[:_t], ml)
@@ -408,8 +607,8 @@ class BettingConfidenceSequence:
 
         return bounds
 
-    def upper(self, phi_dru: np.ndarray) -> np.ndarray:
-        """Compute upper confidence bound U_t^DR for all t.
+    def upper(self, phi_dru: np.ndarray, stride: int = 1) -> np.ndarray:
+        """Compute upper confidence bound U_t^DR for all t (or every stride-th t).
 
         Uses the mirroring trick: U_t^DR = 1 - lower_analog(φ_DRU).
         [remark mirroring-trick]
@@ -418,16 +617,18 @@ class BettingConfidenceSequence:
         ----------
         phi_dru : np.ndarray, shape (T,)
             Upper DR pseudo-outcomes φ_DRU.
+        stride : int
+            Passed through to lower(); see lower() for details.
 
         Returns
         -------
         np.ndarray, shape (T,)
-            Upper bounds U_t^DR.
+            Upper bounds U_t^DR (1 at non-stride positions when stride > 1).
         """
-        return 1.0 - self.lower(np.asarray(phi_dru, dtype=float))
+        return 1.0 - self.lower(np.asarray(phi_dru, dtype=float), stride=stride)
 
     def bounds(
-        self, phi_drl: np.ndarray, phi_dru: np.ndarray
+        self, phi_drl: np.ndarray, phi_dru: np.ndarray, stride: int = 1,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Compute both lower and upper confidence bounds.
 
@@ -437,54 +638,14 @@ class BettingConfidenceSequence:
             Lower DR pseudo-outcomes φ_DRL.
         phi_dru : np.ndarray, shape (T,)
             Upper DR pseudo-outcomes φ_DRU.
+        stride : int
+            Passed through to lower()/upper(); see lower() for details.
 
         Returns
         -------
         lower : np.ndarray, shape (T,)
         upper : np.ndarray, shape (T,)
         """
-        return self.lower(phi_drl), self.upper(phi_dru)
+        return self.lower(phi_drl, stride=stride), self.upper(phi_dru, stride=stride)
 
 
-
-
-class HoeffdingConfidenceBound:
-    """Fixed-sample Hoeffding confidence bound (NOT anytime-valid).
-
-    Implements the width: width_t = sqrt(log(2/α) / (2·t)), applied to
-    normalized pseudo-outcomes ξ_t = φ_t / (1+k) ∈ [0, 1].
-
-      L_t = (1+k) · [mean(ξ_1..t) - width_t] ∨ 0
-      U_t = 1 − L_t(φ_DRU)   [mirroring trick, same as LIL]
-
-    IMPORTANT: these bounds are valid at any single fixed time t, but NOT
-    simultaneously across all t. They are tighter than LIL CSs (no log-log
-    factor), yielding faster stopping times at the cost of losing the
-    anytime guarantee.
-
-    Parameters
-    ----------
-    alpha : float
-        Significance level.
-    k : float
-        Truncation parameter k >= 0.
-    """
-
-    def __init__(self, alpha: float, k: float = 0.0):
-        self.alpha = alpha
-        self.k = k
-
-    def lower(self, phi_drl: np.ndarray) -> np.ndarray:
-        phi = np.asarray(phi_drl, dtype=float)
-        T = len(phi)
-        xi = phi / (1.0 + self.k)
-        t = np.arange(1, T + 1, dtype=float)
-        width = np.sqrt(np.log(2.0 / self.alpha) / (2.0 * t))
-        xi_mean = np.cumsum(xi) / t
-        return np.maximum((1.0 + self.k) * (xi_mean - width), 0.0)
-
-    def upper(self, phi_dru: np.ndarray) -> np.ndarray:
-        return 1.0 - self.lower(np.asarray(phi_dru, dtype=float))
-
-    def bounds(self, phi_drl, phi_dru):
-        return self.lower(phi_drl), self.upper(phi_dru)
