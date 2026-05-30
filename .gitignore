@@ -13,6 +13,6 @@ wheels/
 CLAUDE.md
 
 data/*
-!data/
+!data/cleaned-data_2023-03-28.csv
 replication-package.zip
 resources/
