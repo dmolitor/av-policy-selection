@@ -13,3 +13,4 @@ Dockerfile
 CLAUDE.md
 tests/
 **/.DS_Store
+.binder/
