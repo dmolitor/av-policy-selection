@@ -145,7 +145,7 @@ def run_reanalysis(data_dir: Path | str, fig_dir: Path | str) -> None:
     t_values    = [t_vals[i] for i in col_indices]
     df_heat     = build_heat_df(in_set_sorted.T, _ordered_names, col_indices, t_values)
     fig_heat    = heat_plot(df_heat, T_STRIDE, xlim=(0, N))
-    fig_heat.save(str(fig_dir / "figure3.png"), dpi=300, height=4, width=7)
+    fig_heat.save(str(fig_dir / "figure4.png"), dpi=300, height=4, width=7)
 
     print("Done. Figures saved to", fig_dir)
 

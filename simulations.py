@@ -52,11 +52,6 @@ from av_policy_selection import (
 from av_policy_selection.reanalysis import run_reanalysis
 from utils import build_heat_df, heat_plot, make_cs_ribbon_plot
 
-
-# ── Run mode ─────────────────────────────────────────────────────────────────
-# FULL_RUN=1 reproduces the paper's settings; default is a much smaller test run.
-FULL_RUN = os.environ.get("FULL_RUN", "0") == "1"
-
 # ── Paths ────────────────────────────────────────────────────────────────────
 DATA_DIR = Path(__file__).parent / "data"
 FIG_DIR  = Path(__file__).parent / "figures"
@@ -93,24 +88,15 @@ DELTA_STEP_DEMO = 0.01          # gap increment between successive suboptimals
 # c = ratio (true gap) / (powered-for gap)
 C_GRID = [1.0, 1.25, 1.50, 1.75, 2.00, 2.5, 3]
 
-if FULL_RUN:
-    N_TRIALS_FIXED = 100         # trials per binary-search step for N_90
-    N_TRIALS_F2    = 500         # PrPL CS trials per (Delta_powered, c) cell
-    T_SINGLE       = 5_000       # Figure 1 horizon
-    T_STRIDE_DEMO  = 100         # subsampling stride for Figure 1 ribbons/heatmap
-    M_F2           = 10          # policy-class size used in Figure 2
-    GAP_GRID_F2    = [0.02, 0.05, 0.10, 0.15, 0.20]
-    T_MAX          = 100_000     # budget cap for binary search of N_90
-    N_JOBS         = -1
-else:
-    N_TRIALS_FIXED = 10
-    N_TRIALS_F2    = 15
-    T_SINGLE       = 300
-    T_STRIDE_DEMO  = 30
-    M_F2           = 5
-    GAP_GRID_F2    = [0.05, 0.10, 0.20]
-    T_MAX          = 50_000
-    N_JOBS         = 1
+# Set hyper-parameters for empirical results
+N_TRIALS_FIXED = 100         # trials per binary-search step for N_90
+N_TRIALS_F2    = 500         # PrPL CS trials per (Delta_powered, c) cell
+T_SINGLE       = 5_000       # Figure 1 horizon
+T_STRIDE_DEMO  = 100         # subsampling stride for Figure 1 ribbons/heatmap
+M_F2           = 10          # policy-class size used in Figure 2
+GAP_GRID_F2    = [0.02, 0.05, 0.10, 0.15, 0.20]
+T_MAX          = 100_000     # budget cap for binary search of N_90
+N_JOBS         = -1
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -312,8 +298,8 @@ df_heat_demo = build_heat_df(
     col_indices=_t_idx_demo, t_values=_t_idx_demo + 1,
 )
 plot_heat_demo = heat_plot(df_heat_demo, T_STRIDE_DEMO, xlim=(0, T_SINGLE))
-plot_heat_demo.save(str(FIG_DIR / "figure1a.png"), dpi=300, height=3, width=7)
-print(f"  Saved: {FIG_DIR / 'figure1a.png'}")
+plot_heat_demo.save(str(FIG_DIR / "figure2a.png"), dpi=300, height=3, width=7)
+print(f"  Saved: {FIG_DIR / 'figure2a.png'}")
 
 # CS ribbons (Figure 1b) — one panel per policy.
 _cs_rows_demo = [
@@ -336,8 +322,8 @@ _ylim_demo = (
 plot_cs_demo = make_cs_ribbon_plot(
     df_cs_demo, df_nu_demo, xlim=T_SINGLE, ylim=_ylim_demo, hline_size=0.6
 )
-plot_cs_demo.save(str(FIG_DIR / "figure1b.png"), dpi=300, height=3, width=6)
-print(f"  Saved: {FIG_DIR / 'figure1b.png'}")
+plot_cs_demo.save(str(FIG_DIR / "figure2b.png"), dpi=300, height=3, width=6)
+print(f"  Saved: {FIG_DIR / 'figure2b.png'}")
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -369,7 +355,7 @@ for _gap_pow in tqdm(GAP_GRID_F2, desc="Figure 2 grid"):
             continue
 
         # Cap each trial at 5*N_90 so τ > N_90 is recorded as negative savings.
-        _budget = 5 * _N_90
+        _budget = _N_90 #* 5
         _taus   = np.array(Parallel(n_jobs=N_JOBS, prefer="processes")(
             delayed(_prpl_cs_trial_f2)(s, M_F2, _gap_true, _budget, _alpha_policy_f2)
             for s in range(N_TRIALS_F2)
@@ -390,7 +376,7 @@ for _gap_pow in tqdm(GAP_GRID_F2, desc="Figure 2 grid"):
 
 df_f2 = pd.DataFrame(_rows_f2)
 DATA_DIR.mkdir(exist_ok=True)
-df_f2.to_csv(DATA_DIR / "fig2_savings.csv", index=False)
+df_f2.to_csv(DATA_DIR / "fig3_savings.csv", index=False)
 
 # Aggregate across powered-for gaps: average savings at each c, ±1 SE band.
 _df_f2_agg = (
@@ -408,13 +394,13 @@ _plot_f2 = (
     + pn.geom_point()
     + pn.geom_ribbon(pn.aes(ymin="savings_lo", ymax="savings_hi"), alpha=0.3)
     + pn.scale_x_continuous(breaks=[1.0, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3])
-    + pn.scale_y_continuous(labels=mizani.labels.percent)
-    + pn.labs(x="True Δ ÷ Powered-for Δ", y="Mean sample savings")
+    + pn.scale_y_continuous(labels=mizani.labels.percent, breaks=[0, 0.2, 0.4, 0.6, 0.8, 1])
+    + pn.labs(x="True Δ ÷ Target Δ", y="Mean sample savings")
     + pn.theme_minimal()
     + pn.theme(panel_grid_minor=pn.element_blank())
 )
-_plot_f2.save(str(FIG_DIR / "figure2.png"), dpi=300, width=5, height=3)
-print(f"  Saved: {FIG_DIR / 'figure2.png'}")
+_plot_f2.save(str(FIG_DIR / "figure3.png"), dpi=300, width=5, height=3)
+print(f"  Saved: {FIG_DIR / 'figure3.png'}")
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -422,7 +408,7 @@ print(f"  Saved: {FIG_DIR / 'figure2.png'}")
 # ════════════════════════════════════════════════════════════════════════════
 
 print("─" * 70)
-print("  Figure 3: Infodemic re-analysis (saves to figures/figure3.png)")
+print("  Figure 4: Infodemic re-analysis (saves to figures/figure4.png)")
 print("─" * 70)
 
 if (DATA_DIR / "cleaned-data_2023-03-28.csv").exists():
