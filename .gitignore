@@ -9,3 +9,11 @@ wheels/
 # Virtual environments
 .venv
 .DS_Store
+.claude/
+CLAUDE.md
+
+data/*
+!data/cleaned-data_2023-03-28.csv
+replication-package.zip
+resources/
+tests/
