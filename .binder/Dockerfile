@@ -4,4 +4,4 @@ COPY --from=ghcr.io/astral-sh/uv:0.9.22 /uv /uvx /bin/
 COPY --chown=${NB_USER} . /home/rstudio
 WORKDIR /home/rstudio
 ENV VIRTUAL_ENV=""
-RUN uv sync --active
+RUN uv sync
