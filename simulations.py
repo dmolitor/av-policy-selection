@@ -1,15 +1,15 @@
 """
 Replication script for the empirical results in
-"Anytime-valid Optimal Policy Identification" (Molitor, NeurIPS 2026).
+"Anytime-valid Optimal Policy Identification".
 
 Running this file produces the four figures in Section 4 of the paper:
 
-  figures/figure1a.png  — single-run S_t heatmap     (illustrative example)
-  figures/figure1b.png  — single-run CS ribbons      (illustrative example)
-  figures/figure2.png   — sample-savings curve       (power-analysis overshoot)
-  figures/figure3.png   — infodemic S_t heatmap      (Offer-Westort et al. 2024)
+  figures/figure2a.png  — single-run S_t heatmap     (illustrative example)
+  figures/figure2b.png  — single-run CS ribbons      (illustrative example)
+  figures/figure3.png   — sample-savings curve       (power-analysis overshoot)
+  figures/figure4.png   — infodemic S_t heatmap      (Offer-Westort et al. 2024)
 
-Synthetic DGP for Figures 1 and 2:
+Synthetic DGP for Figures 2 and 3:
   Contexts X ~ Uniform[0, 1]^3.
   Logging policy h(A=1 | X) = clip(sigma(w^T X), 0.10, 0.90); fixed w drawn at seed 1.
   Conditional mean mu(X, A) = BETA[A] . [1, X], with marginal means EV[0]=0.40
@@ -18,20 +18,15 @@ Synthetic DGP for Figures 1 and 2:
   candidate sets p_0 = 1 (always treat), and suboptimal candidates use p_j < 1
   to induce a chosen suboptimality gap.
 
-Figure 2 (sample savings under power-analysis overshoot):
+Figure 3 (sample savings under power-analysis overshoot):
   For each powered-for gap Delta_powered, we find the oracle fixed sample size
-  N_90 — the smallest N at which the PrPL fixed-sample CI of Luedtke & Soni
-  (2024, Corollary 1) identifies pi^* with probability >= 0.90 — by binary
-  search. We then simulate the anytime-valid analogue (PrPL CS) at true gaps
-  Delta_true = c * Delta_powered for c in C_GRID, with a budget cap of 5*N_90,
+  N_90---the smallest N at which the fixed-sample CI of Waudby-Smith et al.
+  identifies pi^* with probability >= 0.90---by binary
+  search. We then simulate the anytime-valid analogue at true gaps
+  Delta_true = c * Delta_powered for c in C_GRID, with a budget cap of N_90,
   and report 1 - E[tau] / N_90 averaged across powered-for gaps.
-
-Modes:
-  uv run python simulations.py             # quick test mode
-  FULL_RUN=1 uv run python simulations.py  # full (paper) settings
 """
 
-import os
 from pathlib import Path
 
 import numpy as np
@@ -78,13 +73,13 @@ GAP_DGP   = float(EV[1] - EV[0])                         # = 0.30
 _LOG_W    = np.random.default_rng(1).standard_normal(D_CONTEXT)
 LOG_CLIP  = 0.10
 
-# ── Figure 1 (illustrative example) ──────────────────────────────────────────
+# ── Figure 2 (illustrative example) ──────────────────────────────────────────
 SEED_DEMO       = 42            # fixed seed for reproducibility
 M_DEMO          = 5             # candidate policies (1 optimal + 4 suboptimal)
 DELTA_MIN_DEMO  = 0.05          # gap of the closest suboptimal policy
 DELTA_STEP_DEMO = 0.01          # gap increment between successive suboptimals
 
-# ── Figure 2 (sample-savings) ────────────────────────────────────────────────
+# ── Figure 3 (sample-savings) ────────────────────────────────────────────────
 # c = ratio (true gap) / (powered-for gap)
 C_GRID = [1.0, 1.25, 1.50, 1.75, 2.00, 2.5, 3]
 
@@ -186,7 +181,7 @@ def _synthetic_aipw(rng, M, gap, T):
 
 
 def _grid_prpl_trial(seed, M, gap, N, alpha_policy):
-    """One fixed-N PrPL CI trial; True iff S_N = {pi^*}."""
+    """One fixed-N CI trial; True iff S_N = {pi^*}."""
     rng              = np.random.default_rng(seed)
     phi_drl, phi_dru = _synthetic_aipw(rng, M, gap, N)
     ci               = PrPLConfidenceInterval(alpha=alpha_policy)
@@ -197,7 +192,7 @@ def _grid_prpl_trial(seed, M, gap, N, alpha_policy):
 
 
 def _prpl_cs_trial_f2(seed, M, gap, T, alpha_policy):
-    """One PrPL CS trial; returns the stopping time tau (capped at T)."""
+    """One CS trial; returns the stopping time tau (capped at T)."""
     rng              = np.random.default_rng(seed)
     phi_drl, phi_dru = _synthetic_aipw(rng, M, gap, T)
     cs               = PrPLConfidenceSequence(alpha=alpha_policy)
@@ -223,11 +218,11 @@ def _find_n90(trial_fn, trial_kwargs, seed_base=0):
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# Figure 1 — single-run illustrative example
+# Figure 2 — single-run illustrative example
 # ════════════════════════════════════════════════════════════════════════════
 
 print("─" * 70)
-print("  Figure 1: Single-run S_t heatmap + CS ribbons (LIL CS)")
+print("  Figure 2: Single-run S_t heatmap + CS ribbons")
 print("─" * 70)
 
 # Five candidate policies + the logging policy. Suboptimal gaps step by 0.01.
@@ -264,7 +259,7 @@ phi_dru_log_vec = _p1_demo * phi_dru_arms_demo[:, 1] + (1 - _p1_demo) * phi_dru_
 # True logging-policy value: v(pi_log) = EV[0] + GAP_DGP * E_X[p1(X)].
 _v_log = float(EV[0] + GAP_DGP * np.mean(_p1_demo))
 
-# LIL CSs over all M_DEMO+1 policies with Bonferroni correction.
+# LIL CSs over all M_DEMO+1 policies.
 _alpha_demo = ALPHA / (M_DEMO + 1)
 _cs_demo    = LILConfidenceSequence(alpha=_alpha_demo, k=K_TRUNC)
 
@@ -291,7 +286,7 @@ print(f"  τ={_tau_demo}  (T+1={T_SINGLE+1} = never stopped)")
 print(f"  S_T: {_remaining_demo}")
 print(f"  True v(π_log) ≈ {_v_log:.3f}")
 
-# Heatmap (Figure 1a) — subsample at stride points to keep output compact.
+# Heatmap (Figure 2a) — subsample at stride points to keep output compact.
 _t_idx_demo  = np.arange(0, T_SINGLE, T_STRIDE_DEMO)
 df_heat_demo = build_heat_df(
     _in_set_all, _policy_names_demo,
@@ -301,7 +296,7 @@ plot_heat_demo = heat_plot(df_heat_demo, T_STRIDE_DEMO, xlim=(0, T_SINGLE))
 plot_heat_demo.save(str(FIG_DIR / "figure2a.png"), dpi=300, height=3, width=7)
 print(f"  Saved: {FIG_DIR / 'figure2a.png'}")
 
-# CS ribbons (Figure 1b) — one panel per policy.
+# CS ribbons (Figure 2b) — one panel per policy.
 _cs_rows_demo = [
     {"t": int(j + 1), "policy": name,
      "lower": float(lower_demo[i, j]), "upper": float(upper_demo[i, j])}
@@ -327,20 +322,19 @@ print(f"  Saved: {FIG_DIR / 'figure2b.png'}")
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# Figure 2 — sample savings under power-analysis overshoot
+# Figure 3 — sample savings under power-analysis overshoot
 # ════════════════════════════════════════════════════════════════════════════
 
 print("─" * 70)
-print("  Figure 2: Mean sample savings 1 - E[τ]/N_90 vs c (gap multiplier)")
+print("  Figure 3: Mean sample savings 1 - E[τ]/N_90 vs c (gap multiplier)")
 print("─" * 70)
 print(f"  M={M_F2}  GAP_GRID={GAP_GRID_F2}  C_GRID={C_GRID}")
 print(f"  N_TRIALS_F2={N_TRIALS_F2}  N_TRIALS_FIXED={N_TRIALS_FIXED}  T_MAX={T_MAX:,}")
-print(f"  Cells with Δ_true > GAP_DGP={GAP_DGP:.2f} are skipped (DGP infeasible).")
 
 _alpha_policy_f2 = ALPHA / M_F2
 _rows_f2         = []
 
-for _gap_pow in tqdm(GAP_GRID_F2, desc="Figure 2 grid"):
+for _gap_pow in tqdm(GAP_GRID_F2, desc="Figure 3 grid"):
     _N_90 = _find_n90(
         trial_fn=_grid_prpl_trial,
         trial_kwargs={"M": M_F2, "gap": _gap_pow, "alpha_policy": _alpha_policy_f2},
@@ -351,11 +345,10 @@ for _gap_pow in tqdm(GAP_GRID_F2, desc="Figure 2 grid"):
     for _c in C_GRID:
         _gap_true = _c * _gap_pow
         if _gap_true > GAP_DGP:
-            print(f"    c={_c}  Δ_true={_gap_true:.3f} > GAP_DGP={GAP_DGP:.2f} — skipped")
             continue
 
-        # Cap each trial at 5*N_90 so τ > N_90 is recorded as negative savings.
-        _budget = _N_90 #* 5
+        # Cap each trial at N_90.
+        _budget = _N_90
         _taus   = np.array(Parallel(n_jobs=N_JOBS, prefer="processes")(
             delayed(_prpl_cs_trial_f2)(s, M_F2, _gap_true, _budget, _alpha_policy_f2)
             for s in range(N_TRIALS_F2)
@@ -404,7 +397,7 @@ print(f"  Saved: {FIG_DIR / 'figure3.png'}")
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# Figure 3 — Offer-Westort et al. (2024) infodemic re-analysis
+# Figure 4 — Offer-Westort et al. (2024) infodemic re-analysis
 # ════════════════════════════════════════════════════════════════════════════
 
 print("─" * 70)
