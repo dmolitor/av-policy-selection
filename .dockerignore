@@ -1,0 +1,15 @@
+.dockerignore
+.claude
+.git
+.pytest_cache
+.venv
+resources/
+figures/
+!figures/.gitignore
+data/
+!data/cleaned-data_2023-03-28.csv
+!data/.gitignore
+Dockerfile
+CLAUDE.md
+tests/
+**/.DS_Store
