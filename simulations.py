@@ -348,7 +348,7 @@ for _gap_pow in tqdm(GAP_GRID_F2, desc="Figure 3 grid"):
             continue
 
         # Cap each trial at N_90.
-        _budget = _N_90
+        _budget = round(1.5 * _N_90)
         _taus   = np.array(Parallel(n_jobs=N_JOBS, prefer="processes")(
             delayed(_prpl_cs_trial_f2)(s, M_F2, _gap_true, _budget, _alpha_policy_f2)
             for s in range(N_TRIALS_F2)
@@ -382,12 +382,15 @@ _df_f2_agg["savings_hi"] = _df_f2_agg["mean_savings"] + _df_f2_agg["se_savings"]
 
 # Plot only c > 1 (savings vs overshoot).
 _plot_f2 = (
-    pn.ggplot(_df_f2_agg[_df_f2_agg["c"] > 1], pn.aes(x="c", y="mean_savings"))
+    pn.ggplot(
+        _df_f2_agg,#[_df_f2_agg["c"] > 1],
+        pn.aes(x="c", y="mean_savings")
+    )
     + pn.geom_line()
     + pn.geom_point()
     + pn.geom_ribbon(pn.aes(ymin="savings_lo", ymax="savings_hi"), alpha=0.3)
     + pn.scale_x_continuous(breaks=[1.0, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3])
-    + pn.scale_y_continuous(labels=mizani.labels.percent, breaks=[0, 0.2, 0.4, 0.6, 0.8, 1])
+    + pn.scale_y_continuous(labels=mizani.labels.percent, breaks=[-0.2, 0, 0.2, 0.4, 0.6, 0.8, 1])
     + pn.labs(x="True Δ ÷ Target Δ", y="Mean sample savings")
     + pn.theme_minimal()
     + pn.theme(panel_grid_minor=pn.element_blank())
