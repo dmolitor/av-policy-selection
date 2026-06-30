@@ -1,5 +1,8 @@
-FROM buildpack-deps:trixie
-COPY --from=ghcr.io/astral-sh/uv:0.9.22 /uv /uvx /bin/
-COPY . /av-optimal-policy
-WORKDIR /av-optimal-policy
-RUN uv sync
+FROM python:3.14-slim
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY . /av-policy-selection
+WORKDIR /av-policy-selection
+
+RUN test -f pyproject.toml || uv init --app . || true
+RUN uv sync --all-groups --all-extras
+RUN uv add -r requirements-tugboat.txt
